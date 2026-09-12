@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b7285">
+<title>水温モニター</title>
+<style>
+body{margin:0;background:#eef7f8;color:#17323a;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
+.wrap{max-width:760px;margin:auto;padding:24px 16px 36px}
+h1{text-align:center;font-size:30px;margin:8px 0 22px}
+.card{background:white;border-radius:20px;padding:22px;margin-bottom:18px;box-shadow:0 4px 18px rgba(0,0,0,.08)}
+.label{text-align:center;opacity:.7}.temp{text-align:center;font-size:64px;font-weight:700;margin:5px 0}.unit{font-size:25px;font-weight:500}
+.status,.updated{text-align:center;font-size:14px;margin-top:10px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#2ca25f;margin-right:7px}
+.stats{display:flex;gap:10px;margin-top:18px}.stat{flex:1;text-align:center;background:#f3f8f9;border-radius:14px;padding:12px}.stat small{display:block;opacity:.65}.stat strong{font-size:20px}
+.chart-title{font-size:18px;font-weight:700;margin-bottom:8px}#chart{width:100%;height:260px}
+.footer{text-align:center;font-size:12px;opacity:.55}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🌡 水温モニター</h1>
+<div class="card">
+<div class="label">現在の水温</div>
+<div class="temp"><span id="temp">--.--</span> <span class="unit">℃</span></div>
+<div class="status"><span class="dot" id="dot"></span><span id="status">データ取得中…</span></div>
+<div class="updated" id="updated">--</div>
+<div class="stats">
+<div class="stat"><small>表示範囲の最高</small><strong id="max">--.-- ℃</strong></div>
+<div class="stat"><small>表示範囲の最低</small><strong id="min">--.-- ℃</strong></div>
+</div>
+</div>
+<div class="card">
+<div class="chart-title">水温の推移（直近30件）</div>
+<svg id="chart" viewBox="0 0 700 260" preserveAspectRatio="none"></svg>
+</div>
+<div class="footer">ThingSpeak Channel 3491588 ・ 15秒ごとに更新</div>
+</div>
+<script>
+const API="https://api.thingspeak.com/channels/3491588/feeds.json?results=30";
+function draw(feeds){
+ const svg=document.getElementById("chart"); svg.innerHTML="";
+ const vals=feeds.map(f=>+f.field1).filter(Number.isFinite); if(!vals.length)return;
+ const W=700,H=260,L=55,R=18,T=18,B=35,mi=Math.min(...vals),ma=Math.max(...vals),span=Math.max(ma-mi,.2),lo=mi-span*.12,hi=ma+span*.12;
+ const x=i=>L+(W-L-R)*(feeds.length===1?.5:i/(feeds.length-1)), y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+ for(let i=0;i<4;i++){let yy=T+(H-T-B)*i/3;let ln=document.createElementNS("http://www.w3.org/2000/svg","line");ln.setAttribute("x1",L);ln.setAttribute("x2",W-R);ln.setAttribute("y1",yy);ln.setAttribute("y2",yy);ln.setAttribute("stroke","#d9e5e8");svg.appendChild(ln);
+ let tx=document.createElementNS("http://www.w3.org/2000/svg","text");tx.setAttribute("x",L-8);tx.setAttribute("y",yy+5);tx.setAttribute("text-anchor","end");tx.setAttribute("font-size","13");tx.setAttribute("fill","#61747a");tx.textContent=(hi-(hi-lo)*i/3).toFixed(1);svg.appendChild(tx);}
+ let d=""; feeds.forEach((f,i)=>{let v=+f.field1;if(Number.isFinite(v))d+=(d?" L ":"M ")+x(i)+" "+y(v)});
+ let p=document.createElementNS("http://www.w3.org/2000/svg","path");p.setAttribute("d",d);p.setAttribute("fill","none");p.setAttribute("stroke","#0b7285");p.setAttribute("stroke-width","4");p.setAttribute("stroke-linecap","round");p.setAttribute("stroke-linejoin","round");svg.appendChild(p);
+ feeds.forEach((f,i)=>{let v=+f.field1;if(!Number.isFinite(v))return;let c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",x(i));c.setAttribute("cy",y(v));c.setAttribute("r","4");c.setAttribute("fill","#0b7285");svg.appendChild(c)});
+}
+async function update(){
+ try{
+  const r=await fetch(API,{cache:"no-store"}); if(!r.ok)throw Error(r.status);
+  const d=await r.json(),f=d.feeds||[]; if(!f.length)throw Error("no data");
+  const v=f.map(x=>+x.field1).filter(Number.isFinite),latest=+f[f.length-1].field1;
+  document.getElementById("temp").textContent=latest.toFixed(2);
+  document.getElementById("max").textContent=Math.max(...v).toFixed(2)+" ℃";
+  document.getElementById("min").textContent=Math.min(...v).toFixed(2)+" ℃";
+  document.getElementById("updated").textContent="最終更新："+new Date(f[f.length-1].created_at).toLocaleString("ja-JP");
+  document.getElementById("status").textContent="正常に監視中";document.getElementById("dot").style.background="#2ca25f";draw(f);
+ }catch(e){document.getElementById("status").textContent="データ取得エラー";document.getElementById("dot").style.background="#d64545";console.error(e)}
+}
+update();setInterval(update,15000);
+</script>
+</body>
+</html>
